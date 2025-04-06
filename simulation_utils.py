@@ -62,7 +62,7 @@ def simulation_step(particle_type_table: jnp.ndarray,
                            dist_mat)
 
     # changing the axis of the summation here will reverse the sign of the force
-    accelerations = jnp.sum(potentials[..., jnp.newaxis]*dir, axis=1)/masses[particle_type_table, jnp.newaxis]
+    accelerations = jnp.sum(potentials[..., jnp.newaxis]*dir, axis=0)/masses[particle_type_table, jnp.newaxis]
 
     new_velocity = velocity + accelerations
     new_velocity = jnp.clip(new_velocity, -speed_limit, speed_limit)

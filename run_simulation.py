@@ -14,35 +14,35 @@ from jax import jit, disable_jit
 from simulation_utils import *
 
 
-results_dir = "results/trial1"
+results_dir = "results/trial12"
 
 palette = [(75, 175, 50),
            (0, 175, 127),
            (102, 51, 229),
            (204, 51, 127)]
 
-potential_close = np.array([[0.05, 0.1, 0.05, 0.1],
-                            [0.1, 0.1, 0.1, 0.2],
-                            [0.05, 0.1, 0.05, 0.2],
-                            [0.1, 0.2, 0.2, 0.1]])
-potential_trough = -np.array([[0.3, 0.3, 0.1, 0.03],
-                              [0.3, 1, 0.3, 0.1],
-                              [0.1, 0.3, 0.3, 0.03],
-                              [0.03, 0.1, 0.03, 0.1]])
-potential_peak = np.array([[1, 3, 1, 3],
-                           [3, 1, 1, 3],
-                           [1, 1, 1, 1],
-                           [3, 3, 1, 1]])
-potential_far = np.array([[0.1, 0.2, 0.1, 0.2],
-                          [0.2, 0.2, 0.2, 0.4],
-                          [0.1, 0.2, 0.1, 0.4],
-                          [0.2, 0.4, 0.4, 0.2]])
+potential_close = np.array([[0.025, 0.05, 0.05, 0.05],
+                            [0.05, 0.025, 0.05, 0.05],
+                            [0.05, 0.05, 0.025, 0.05],
+                            [0.05, 0.05, 0.05, 0.025]])
+potential_trough = -np.array([[0.1, 0.1, 0.1, 0.1],
+                              [0.1, 0.1, 0.1, 0.1],
+                              [0.1, 0.1, 0.1, 0.1],
+                              [0.1, 0.1, 0.1, 0.1]])
+potential_peak = np.array([[3, 1, 1, 1],
+                           [1, 3, 1, 1],
+                           [1, 1, 3, 1],
+                           [1, 1, 1, 3]])
+potential_far = np.array([[0.2, 0.2, 0.2, 0.2],
+                          [0.2, 0.2, 0.2, 0.2],
+                          [0.2, 0.2, 0.2, 0.2],
+                          [0.2, 0.2, 0.2, 0.2]])
 masses = np.array([1e3, 1e3, 1e3, 1e3])
-max_init_speed = 1e-5
+max_init_speed = 0
 speed_limit = 3e-3
-n_particles_per_type = [1024, 1024, 1024, 1024]
+n_particles_per_type = [2048, 2048, 2048, 2048]
 seed = 24
-num_steps = 1000
+num_steps = 500
 
 
 def run_simulation():
@@ -86,7 +86,7 @@ def save_simulation_mp4(simulation_history: np.ndarray):
         [[i] * n for i, n in enumerate(n_particles_per_type)])
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    height, width = 512, 512
+    height, width = 720, 720
     out = cv2.VideoWriter(os.path.join(
         results_dir, "simulation.mp4"), fourcc, 30.0, (width, height))
 
@@ -112,6 +112,8 @@ if __name__ == "__main__":
     np.save(os.path.join(results_dir, "masses.npy"), masses)
     np.save(os.path.join(results_dir, "n_particles_per_type.npy"),
             n_particles_per_type)
+    np.save(os.path.join(results_dir, "max_init_speed.npy"), max_init_speed)
+    np.save(os.path.join(results_dir, "speed_limit.npy"), speed_limit)
     np.save(os.path.join(results_dir, "seed.npy"), seed)
 
     simulation_history = run_simulation()
