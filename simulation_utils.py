@@ -3,7 +3,6 @@ import jax.random as jrd
 
 from typing import *
 from jax import vmap
-from functools import partial
 
 
 def potential(particle_type_table: jnp.ndarray,
@@ -45,6 +44,7 @@ def simulation_step(particle_type_table: jnp.ndarray,
                     potential_trough: jnp.ndarray,
                     potential_far: jnp.ndarray,
                     masses: jnp.ndarray,
+                    speed_limit: float,
                     sim_state: jnp.ndarray) -> jnp.ndarray:
     position, velocity = sim_state[:, :2], sim_state[:, 2:]
 
@@ -65,6 +65,7 @@ def simulation_step(particle_type_table: jnp.ndarray,
     accelerations = jnp.sum(potentials[..., jnp.newaxis]*dir, axis=1)/masses[particle_type_table, jnp.newaxis]
 
     new_velocity = velocity + accelerations
+    new_velocity = jnp.clip(new_velocity, -speed_limit, speed_limit)
     new_position = position + new_velocity
     new_position = jnp.mod(new_position, 1)
 
