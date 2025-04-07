@@ -14,35 +14,58 @@ from jax import jit, disable_jit
 from simulation_utils import *
 
 
-results_dir = "results/trial12"
+results_dir = "results/trial41"
 
-palette = [(75, 175, 50),
+# green, cyan, blue-pink, red-magenta, orange, bright yellow, blue-magenta, blue-cyan
+palette = [(75, 200, 50),
            (0, 175, 127),
            (102, 51, 229),
-           (204, 51, 127)]
+           (204, 51, 127),
+           (255, 127, 0),
+           (255, 255, 0),
+           (127, 0, 255),
+           (0, 127, 255)]
 
-potential_close = np.array([[0.025, 0.05, 0.05, 0.05],
-                            [0.05, 0.025, 0.05, 0.05],
-                            [0.05, 0.05, 0.025, 0.05],
-                            [0.05, 0.05, 0.05, 0.025]])
-potential_trough = -np.array([[0.1, 0.1, 0.1, 0.1],
-                              [0.1, 0.1, 0.1, 0.1],
-                              [0.1, 0.1, 0.1, 0.1],
-                              [0.1, 0.1, 0.1, 0.1]])
-potential_peak = np.array([[3, 1, 1, 1],
-                           [1, 3, 1, 1],
-                           [1, 1, 3, 1],
-                           [1, 1, 1, 3]])
-potential_far = np.array([[0.2, 0.2, 0.2, 0.2],
-                          [0.2, 0.2, 0.2, 0.2],
-                          [0.2, 0.2, 0.2, 0.2],
-                          [0.2, 0.2, 0.2, 0.2]])
+potential_close = 2*np.array([[0.03, 0.015, 0.025, 0.025],
+                            [0.015, 0.05, 0.025, 0.1],
+                            [0.025, 0.025, 0.1, 0.05],
+                            [0.025, 0.1, 0.05, 0.025]])
+potential_close = np.tile(potential_close, (2, 2))
+#potential_close[4:, :4] *= 2.0
+#potential_close[:4, 4:] *= 2.0
+potential_trough = -0.1*np.array([[0.5, 0.25, 0.5, 0],
+                              [0.25, 0.5, 0.25, 0],
+                              [0.5, 0.25, 1, 0.25],
+                              [0, 0, 0.25, 0.25]])
+potential_trough = np.tile(potential_trough, (2, 2))
+potential_trough[4:, :4] *= 0.3
+potential_trough[:4, 4:] *= 0.5
+potential_trough[:4, :4] *= 2.0
+potential_trough[4:, 4:] *= 3.0
+
+potential_peak = 1.5*np.array([[2, 0.5, 0.3, 3],
+                           [0.5, 2, 0.3, 3],
+                           [0.3, 0.3, 3, 3],
+                           [3, 3, 3, 3]])
+potential_peak = np.tile(potential_peak, (2, 2))
+potential_peak[4:, :4] *= 2.0
+potential_peak[:4, 4:] *= 3.0
+potential_peak[:4, :4] *= 0.5
+potential_peak[4:, 4:] *= 0.3
+potential_far = 2*np.array([[0.15, 0.1, 0.2, 0.1],
+                          [0.1, 0.2, 0.1, 0.2],
+                          [0.2, 0.1, 0.2, 0.1],
+                          [0.1, 0.2, 0.1, 0.05]])
+potential_far = np.tile(potential_far, (2, 2))
+#potential_far[4:, :4] *= 2.0
+#potential_far[:4, 4:] *= 2.0
+potential_far = np.clip(potential_far, 0, 0.25)
 masses = np.array([1e3, 1e3, 1e3, 1e3])
 max_init_speed = 0
-speed_limit = 3e-3
-n_particles_per_type = [2048, 2048, 2048, 2048]
-seed = 24
-num_steps = 500
+speed_limit = 5e-3
+n_particles_per_type = [1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500]
+seed = 25
+num_steps = 1000
 
 
 def run_simulation():

@@ -65,7 +65,8 @@ def simulation_step(particle_type_table: jnp.ndarray,
     accelerations = jnp.sum(potentials[..., jnp.newaxis]*dir, axis=0)/masses[particle_type_table, jnp.newaxis]
 
     new_velocity = velocity + accelerations
-    new_velocity = jnp.clip(new_velocity, -speed_limit, speed_limit)
+    speed = jnp.sqrt(jnp.sum(new_velocity**2, axis=-1))[..., jnp.newaxis]
+    new_velocity = jnp.where(speed > speed_limit, speed_limit*new_velocity/speed, new_velocity)
     new_position = position + new_velocity
     new_position = jnp.mod(new_position, 1)
 
