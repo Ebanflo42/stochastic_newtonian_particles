@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stochastic_newtonian_particles"
+version = "0.0.1"
+dependencies = [
+    "numpy",
+    "opencv-python>=4.10.0",
+    "matplotlib",
+    "tqdm",
+    "jax[cuda12]",
+    "easydict",
+    "pyyaml"
+]
+authors = [{name = "Eben Kadile", email = "eben.kadile24@gmail.com"}]
+
+[project.scripts]
+run_simulation = "stochastic_newtonian_particles.run_simulation:run_simulation_entry"
