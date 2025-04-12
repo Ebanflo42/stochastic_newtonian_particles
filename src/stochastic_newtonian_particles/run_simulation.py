@@ -24,10 +24,11 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
 
     # Initialize positions and velocities
     key = jrd.PRNGKey(config.seed)
+    init_key, sim_key = jrd.split(key, num=2)
     sim_state = simulation_init(config.max_init_speed,
                                 config.n_particles_per_type,
                                 config.core_size,
-                                key,
+                                init_key,
                                 config.initialization_mode)
 
     # Initialize simulation history
@@ -36,18 +37,34 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
 
     # Compile the simulation step function to improve performance
     # disable_jit()
-    step = jit(partial(simulation_step,
-                       jnp.array(particle_type_table),
-                       jnp.array(config.potential_peak),
-                       jnp.array(config.potential_close),
-                       jnp.array(config.potential_trough),
-                       jnp.array(config.potential_far),
-                       jnp.array(config.masses),
-                       config.speed_limit,
-                       config.dt))
+    if config.stochastic:
+        step = jit(partial(simulation_step_stochastic,
+                           jnp.array(particle_type_table),
+                           jnp.array(config.potential_peak),
+                           jnp.array(config.potential_close),
+                           jnp.array(config.potential_trough),
+                           jnp.array(config.potential_far),
+                           jnp.array(config.masses),
+                           config.speed_limit,
+                           config.dt,
+                           config.transfer_probability,
+                           config.transfer_intensity))
+    else:
+        step = jit(partial(simulation_step_deterministic,
+                           jnp.array(particle_type_table),
+                           jnp.array(config.potential_peak),
+                           jnp.array(config.potential_close),
+                           jnp.array(config.potential_trough),
+                           jnp.array(config.potential_far),
+                           jnp.array(config.masses),
+                           config.speed_limit,
+                           config.dt))
 
     for t in tqdm(range(1, config.num_steps)):
-        sim_state = step(sim_state)
+        if config.stochastic:
+            sim_state, sim_key = step(sim_key, sim_state)
+        else:
+            sim_state = step(sim_state)
         simulation_history[t] = sim_state
 
     return simulation_history

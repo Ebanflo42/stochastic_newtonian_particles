@@ -4,6 +4,7 @@ import jax.random as jrd
 
 from typing import *
 from jax import vmap
+from jax.experimental import sparse
 
 
 def matrix_exponetial(m: jnp.ndarray) -> jnp.ndarray:
@@ -13,24 +14,62 @@ def matrix_exponetial(m: jnp.ndarray) -> jnp.ndarray:
     return jnp.eye(m.shape[0]) + m + square/2 + cube/6 + fourth/24
 
 
-def gram_schmidt(vectors: jnp.ndarray) -> jnp.ndarray:
+def gram_schmidt(vectors: np.ndarray) -> np.ndarray:
     """Perform Gram-Schmidt orthogonalization on a set of vectors."""
     n_vectors = vectors.shape[0]
-    orthogonal_vectors = jnp.zeros_like(vectors)
+    orthogonal_vectors = np.zeros_like(vectors)
 
     for i in range(n_vectors):
         v = vectors[i]
         for j in range(i):
-            v -= jnp.dot(v, orthogonal_vectors[j]) * orthogonal_vectors[j]
-        orthogonal_vectors.at[i].set(v/jnp.linalg.norm(v))
+            v -= np.dot(v, orthogonal_vectors[j]) * orthogonal_vectors[j]
+        orthogonal_vectors[i] = v/jnp.linalg.norm(v)
 
     return orthogonal_vectors
 
 
-def rotation_constraint(n: int) -> jnp.ndarray:
-    constraint = jnp.eye(n)
-    constraint.at[0].set(jnp.ones((n,)))
+def rotation_constraint(n: int) -> np.ndarray:
+    constraint = np.eye(n)
+    constraint[0] = np.ones((n,))
     return gram_schmidt(constraint).T
+
+
+def rotation_matrix_4d(theta: float) -> jnp.ndarray:
+    """A rotation in the plane orthogonal to (1, 0, 1, 0) and (0, 1, 0, 1)"""
+    c = jnp.cos(theta)
+    s = jnp.sin(theta)
+    m = jnp.array([[1 + c, 0, 1 - c, -s],
+                    [0, 1 + c, s, 1 - c],
+                    [1 - c, -s, 1 + c, 0],
+                    [s, 1 - c, 0, 1 + c]])
+    return m
+
+
+def build_rotation_matrix(pairs: jnp.ndarray, angles: jnp.ndarray) -> sparse.BCOO:
+    s = jnp.sin(angles)
+    c = jnp.cos(angles)
+    indices = jnp.concatenate([jnp.stack([2*pairs[0], 2*pairs[0]], axis=-1),
+                               jnp.stack([2*pairs[0] + 1, 2*pairs[0]], axis=-1),
+                               jnp.stack([2*pairs[1], 2*pairs[0]], axis=-1),
+                               jnp.stack([2*pairs[1] + 1, 2*pairs[0]], axis=-1),
+                               jnp.stack([2*pairs[0], 2*pairs[0] + 1], axis=-1),
+                               jnp.stack([2*pairs[0] + 1, 2*pairs[0] + 1], axis=-1),
+                               jnp.stack([2*pairs[1], 2*pairs[0] + 1], axis=-1),
+                               jnp.stack([2*pairs[1] + 1, 2*pairs[0] + 1], axis=-1),
+                               jnp.stack([2*pairs[0], 2*pairs[1]], axis=-1),
+                               jnp.stack([2*pairs[0] + 1, 2*pairs[1]], axis=-1),
+                               jnp.stack([2*pairs[1], 2*pairs[1]], axis=-1),
+                               jnp.stack([2*pairs[1] + 1, 2*pairs[1]], axis=-1),
+                               jnp.stack([2*pairs[0], 2*pairs[1] + 1], axis=-1),
+                               jnp.stack([2*pairs[0] + 1, 2*pairs[1] + 1], axis=-1),
+                               jnp.stack([2*pairs[1], 2*pairs[1] + 1], axis=-1),
+                               jnp.stack([2*pairs[1] + 1, 2*pairs[1] + 1], axis=-1)]
+                              , axis=0)
+    values = jnp.concatenate([1 + c, jnp.zeros_like(angles), 1 - c, -s,
+                              jnp.zeros_like(angles), 1 + c, s, 1 - c,
+                              1 - c, -s, 1 + c, jnp.zeros_like(angles),
+                              s, 1 - c, jnp.zeros_like(angles), 1 + c])
+    return sparse.BCOO((0.5*values, indices), shape=(2*pairs.shape[0], 2*pairs.shape[0]))
 
 
 def potential(peak_gathered: jnp.ndarray,
@@ -56,25 +95,19 @@ def potential(peak_gathered: jnp.ndarray,
 
 
 def random_momentum_transfer(key: jrd.PRNGKey,
-                             rotation_constraint: jnp.ndarray,
-                             noise_strength: float,
+                             transfer_probability: float,
+                             transfer_intensity: float,
                              potential_far: jnp.ndarray,
                              distances: jnp.ndarray,
                              masses: jnp.ndarray,
                              velocity: jnp.ndarray) -> jnp.ndarray:
-    # randomly generate antisymmetric matrix
-    gaussian = noise_strength*jrd.normal(key, shape=distances.shape)
-    generator = 0.5*(gaussian - gaussian.T)
+    not_far_indices = jnp.stack(jnp.where(distances < potential_far), axis=-1)
+    not_far_indices = not_far_indices[not_far_indices[:, 0] > not_far_indices[:, 1]]
 
-    # only particles capable of "observing" each other will trade momentum
-    generator *= (distances < potential_far).astype(jnp.float32)
-
-    # the constraint should ensure that the sum of all momenta is conserved
-    generator = generator@rotation_constraint.T
-    generator[:1] = 0
-    generator[:, :1] = 0
-    generator = rotation_constraint@generator
-    rotation = matrix_exponetial(generator)
+    k1, k2 = jrd.split(key, num=2)
+    pairs_to_transfer = not_far_indices[jrd.bernoulli(k1, transfer_probability, shape=(not_far_indices.shape[0],)) > 0.5]
+    angles = jrd.beta(k2, transfer_intensity, transfer_intensity, shape=(pairs_to_transfer.shape[0],))
+    rotation = build_rotation_matrix(pairs_to_transfer, angles)
 
     momenta = masses*velocity
     transferred_momenta = rotation@momenta
@@ -114,8 +147,7 @@ def simulation_step_deterministic(particle_type_table: jnp.ndarray,
     dir = jnp.mod(dir + 0.5, 1) - 0.5
     dist_mat = jnp.sqrt(jnp.sum(dir**2, axis=-1))
 
-    potentials = potential(particle_type_table,
-                           peak_gathered,
+    potentials = potential(peak_gathered,
                            close_gathered,
                            trough_gathered,
                            far_gathered,
@@ -143,9 +175,9 @@ def simulation_step_stochastic(particle_type_table: jnp.ndarray,
                                masses: jnp.ndarray,
                                speed_limit: float,
                                dt: float,
+                               transfer_probability: float,
+                               transfer_intensity: float,
                                key: jrd.PRNGKey,
-                               noise_strength: float,
-                               rotation_constraint: jnp.ndarray,
                                sim_state: jnp.ndarray) -> Tuple[jnp.ndarray, jrd.PRNGKey]:
     this_key, next_key = jrd.split(key, num=2)
 
@@ -171,8 +203,7 @@ def simulation_step_stochastic(particle_type_table: jnp.ndarray,
     dir = jnp.mod(dir + 0.5, 1) - 0.5
     dist_mat = jnp.sqrt(jnp.sum(dir**2, axis=-1))
 
-    potentials = potential(particle_type_table,
-                           peak_gathered,
+    potentials = potential(peak_gathered,
                            close_gathered,
                            trough_gathered,
                            far_gathered,
@@ -188,8 +219,8 @@ def simulation_step_stochastic(particle_type_table: jnp.ndarray,
     new_velocity = jnp.where(
         speed > speed_limit, speed_limit*new_velocity/speed, new_velocity)
     new_velocity = random_momentum_transfer(this_key,
-                                            rotation_constraint,
-                                            noise_strength,
+                                            transfer_probability,
+                                            transfer_intensity,
                                             far_gathered,
                                             dist_mat,
                                             masses_gathered,
