@@ -53,6 +53,9 @@ num_steps: 1000
 initialization_mode: "core"
 core_size: 0.125
 
-stochastic: True
-transfer_probability: 0.01
+stochastic: False
+n_transfers_per_step: 100
 transfer_intensity: 0.5
+
+sparse: True
+neighborhood_search_depth: 2

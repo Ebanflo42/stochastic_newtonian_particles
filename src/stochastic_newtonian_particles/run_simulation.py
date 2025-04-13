@@ -32,23 +32,24 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
                                 config.initialization_mode)
 
     # Initialize simulation history
-    simulation_history = np.zeros((config.num_steps, sum(config.n_particles_per_type), 4))
+    simulation_history = np.zeros(
+        (config.num_steps, sum(config.n_particles_per_type), 4))
     simulation_history[0] = sim_state
 
     # Compile the simulation step function to improve performance
     # disable_jit()
     if config.stochastic:
-        step = jit(partial(simulation_step_stochastic,
-                           jnp.array(particle_type_table),
-                           jnp.array(config.potential_peak),
-                           jnp.array(config.potential_close),
-                           jnp.array(config.potential_trough),
-                           jnp.array(config.potential_far),
-                           jnp.array(config.masses),
-                           config.speed_limit,
-                           config.dt,
-                           config.transfer_probability,
-                           config.transfer_intensity))
+        step = partial(simulation_step_stochastic,
+                       jnp.array(particle_type_table),
+                       jnp.array(config.potential_peak),
+                       jnp.array(config.potential_close),
+                       jnp.array(config.potential_trough),
+                       jnp.array(config.potential_far),
+                       jnp.array(config.masses),
+                       config.speed_limit,
+                       config.dt,
+                       config.n_transfers_per_step,
+                       config.transfer_intensity)
     else:
         step = jit(partial(simulation_step_deterministic,
                            jnp.array(particle_type_table),
@@ -76,7 +77,7 @@ def run_simulation_main(config: EasyDict):
         with open(os.path.join(config.results_dir, 'config.yaml'), 'w') as f:
             yaml.dump(config, f)
     elif not config.extend and \
-        os.path.exists(os.path.join(config.results_dir, 'simulation_hisory.npy')):
+            os.path.exists(os.path.join(config.results_dir, 'simulation_hisory.npy')):
         raise FileExistsError(
             f"Results directory {config.results_dir} already exists with simulation_history.npy. Use --extend to continue.")
 
@@ -101,6 +102,10 @@ def run_simulation_entry():
     parser.add_argument("--dt", type=float, default=None)
     parser.add_argument("--speed_limit", type=float, default=None)
     parser.add_argument("--max_init_speed", type=float, default=None)
+    parser.add_argument("--initialization_mode", type=str, default=None)
+    parser.add_argument("--stochastic", type=bool, default=None)
+    parser.add_argument("--n_transfers_per_step", type=int, default=None)
+    parser.add_argument("--transfer_intensity", type=float, default=None)
 
     args = parser.parse_args()
 
