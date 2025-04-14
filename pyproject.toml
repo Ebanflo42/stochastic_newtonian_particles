@@ -12,7 +12,8 @@ dependencies = [
     "tqdm",
     "jax[cuda12]",
     "easydict",
-    "pyyaml"
+    "pyyaml",
+    "joblib"
 ]
 authors = [{name = "Eben Kadile", email = "eben.kadile24@gmail.com"}]
 

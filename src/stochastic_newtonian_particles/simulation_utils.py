@@ -7,6 +7,7 @@ from jax import vmap, jit
 from jax.lax import fori_loop
 from functools import partial
 from jax.experimental import sparse
+from joblib import Parallel, delayed
 
 
 def matrix_exponetial(m: jnp.ndarray) -> jnp.ndarray:
@@ -119,14 +120,14 @@ def compute_force_sparse(peak: jnp.ndarray,
     # as that would be meaningless
 
     # linear interpolation on two different pieces
-    close_t = distances/close[type_edges[:, 0]][type_edges[:, 1]]
-    far_t = (distances - close[type_edges[:, 0]][type_edges[:, 1]]) / \
-        (far[type_edges[:, 0]][type_edges[:, 1]] -
-         close[type_edges[:, 0]][type_edges[:, 1]])
+    close_t = distances/close[type_edges]
+    far_t = (distances - close[type_edges]) / \
+        (far[type_edges] -
+         close[type_edges])
     close_potential = \
-        (1 - close_t)*peak[type_edges[:, 0]][type_edges[:, 1]] + \
-        close_t*trough[type_edges[:, 0]][type_edges[:, 1]]
-    far_potential = (1 - far_t)*trough[type_edges[:, 0]][type_edges[:, 1]]
+        (1 - close_t)*peak[type_edges] + \
+        close_t*trough[type_edges]
+    far_potential = (1 - far_t)*trough[type_edges]
 
     # switch between the two pieces using step function
     tot_potential = close_potential*jnp.heaviside(1 - close_t, 0) + \
@@ -406,18 +407,18 @@ def simulation_init(max_init_speed: float,
     return jnp.concatenate([position, velocity], axis=-1)
 
 
-def get_dir_wrapped(p1, p2):
+def get_diff_wrapped(p1, p2):
     """Get the direction vector between two points, wrapped around the unit square."""
-    dir = p1 - p2
-    dir = np.mod(dir + 0.5, 1) - 0.5
-    return dir
+    diff = p1 - p2
+    diff = np.mod(diff + 0.5, 1) - 0.5
+    return diff
 
 
-def get_dir_wrapped_jax(p1, p2):
+def get_diff_wrapped_jax(p1, p2):
     """Get the direction vector between two points, wrapped around the unit square."""
-    dir = p1 - p2
-    dir = jnp.mod(dir + 0.5, 1) - 0.5
-    return dir
+    diff = p1 - p2
+    diff = jnp.mod(diff + 0.5, 1) - 0.5
+    return diff
 
 
 def simulation_init_sparse(max_init_speed: float,
@@ -453,18 +454,27 @@ def simulation_init_sparse(max_init_speed: float,
     velocity = max_init_speed * \
         jrd.uniform(seed2, (tot_particles, 2), minval=-1, maxval=1)
 
-    ixs = [np.where(np.logical_and(np.linalg.norm(get_dir_wrapped(position, position[i][np.newaxis]), axis=1)
-                    < potential_far[particle_type_table[i]][particle_type_table],
-                    np.linalg.norm(get_dir_wrapped(
-                        position, position[i][np.newaxis]), axis=1)
-                    > 0)) for i in range(tot_particles)]
-    dirs = [np.array([get_dir_wrapped(position[i], position[j])
-                      for i in ix]) for j, ix in enumerate(ixs)]
-    dists = [jnp.linalg.norm(ds, axis=1) for ds in dirs]
-    dirs = np.concatenate(dirs, axis=0)
-    neighbor_matrix = sparse.BCOO((np.concatenate(dists, axis=0),
-                                   np.concatenate(ixs, axis=0)),
+    def get_ixs_diffs_dist(i):
+        # compute the direction vectors of all neighbors close enough together
+        diff = get_diff_wrapped(position[i], position)
+        dist = np.linalg.norm(diff, axis=1)
+        # store the indices and distances in a COO sparse matrix
+        ix = np.where(np.logical_and(dist < potential_far[particle_type_table[i]][particle_type_table],
+                                     dist > 0))[0]
+        diff = diff[ix]
+        dist = dist[ix]
+        ix = np.concatenate((np.repeat(i, ix.shape[0])[:, np.newaxis], ix[:, np.newaxis]), axis=-1)
+        return ix, diff[ix], dist
+
+    # use cpu to find initial neighbor indices
+    neighbor_data = Parallel(n_jobs=3)(delayed(get_ixs_diffs_dist)(i) for i in range(tot_particles))
+    neighbor_data = [x for x in neighbor_data if len(x[0]) > 0]
+    # store the indices and distances in a COO sparse matrix
+    neighbor_matrix = sparse.BCOO((np.concatenate([x[2] for x in neighbor_data], axis=0),
+                                   np.concatenate([x[0] for x in neighbor_data], axis=0)),
                                   shape=(tot_particles, tot_particles))
+    # and keep the direction vectors separate
+    dirs = np.concatenate([x[1] for x in neighbor_data], axis=0)
 
     return jnp.concatenate([position, velocity], axis=-1), neighbor_matrix, dirs
 
@@ -482,8 +492,7 @@ def simulation_step_sparse(particle_type_table: jnp.ndarray,
                            dirs: jnp.ndarray) -> Tuple[jnp.ndarray, sparse.BCOO, jnp.ndarray]:
     position, velocity = sim_state[:, :2], sim_state[:, 2:]
 
-    type_edges = particle_type_table[neighbor_matrix.indices[:, 0]
-                                     ][neighbor_matrix.indices[:, 1]]
+    type_edges = particle_type_table[neighbor_matrix.indices]
 
     force_vectors = compute_force_sparse(potential_peak,
                                          potential_close,

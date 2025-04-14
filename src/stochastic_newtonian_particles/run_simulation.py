@@ -20,26 +20,39 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
 
     # Create an array indicating the type of each particle
     particle_type_table = np.concatenate(
-        [[i] * n for i, n in enumerate(config.n_particles_per_type)])
+        [[i] * n for i, n in enumerate(config.n_particles_per_type)]).astype(np.int32)
 
-    # Initialize positions and velocities
     key = jrd.PRNGKey(config.seed)
-    init_key, sim_key = jrd.split(key, num=2)
-    sim_state = simulation_init(config.max_init_speed,
-                                config.n_particles_per_type,
-                                config.core_size,
-                                init_key,
-                                config.initialization_mode)
 
     # Initialize simulation history
+    n_particles = sum(config.n_particles_per_type)
     simulation_history = np.zeros(
-        (config.num_steps, sum(config.n_particles_per_type), 4))
-    simulation_history[0] = sim_state
+        (config.num_steps, n_particles, 4))
 
     # Compile the simulation step function to improve performance
     # disable_jit()
-    if config.stochastic:
-        step = partial(simulation_step_stochastic,
+    # if config.stochastic:
+    #    step = partial(simulation_step_stochastic,
+    #                   jnp.array(particle_type_table),
+    #                   jnp.array(config.potential_peak),
+    #                   jnp.array(config.potential_close),
+    #                   jnp.array(config.potential_trough),
+    #                   jnp.array(config.potential_far),
+    #                   jnp.array(config.masses),
+    #                   config.speed_limit,
+    #                   config.dt,
+    #                   config.n_transfers_per_step,
+    #                   config.transfer_intensity)
+    if config.sparse:
+        sim_state, neighbor_matrix, dirs = simulation_init_sparse(config.max_init_speed,
+                                                                  config.n_particles_per_type,
+                                                                  config.core_size,
+                                                                  np.array(config.potential_far),
+                                                                  particle_type_table,
+                                                                  key,
+                                                                  config.initialization_mode)
+        simulation_history[0] = sim_state
+        step = partial(simulation_step_sparse,
                        jnp.array(particle_type_table),
                        jnp.array(config.potential_peak),
                        jnp.array(config.potential_close),
@@ -47,10 +60,18 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
                        jnp.array(config.potential_far),
                        jnp.array(config.masses),
                        config.speed_limit,
-                       config.dt,
-                       config.n_transfers_per_step,
-                       config.transfer_intensity)
+                       config.dt)
+        for t in tqdm(range(1, config.num_steps)):
+            sim_state, neighbor_matrix, dirs = step(
+                sim_state, neighbor_matrix, dirs)
+            simulation_history[t] = sim_state
     else:
+        sim_state = simulation_init(config.max_init_speed,
+                                    config.n_particles_per_type,
+                                    config.core_size,
+                                    key,
+                                    config.initialization_mode)
+        simulation_history[0] = sim_state
         step = jit(partial(simulation_step_deterministic,
                            jnp.array(particle_type_table),
                            jnp.array(config.potential_peak),
@@ -60,15 +81,11 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
                            jnp.array(config.masses),
                            config.speed_limit,
                            config.dt))
-
-    for t in tqdm(range(1, config.num_steps)):
-        if config.stochastic:
-            sim_state, sim_key = step(sim_key, sim_state)
-        else:
+        for t in tqdm(range(1, config.num_steps)):
             sim_state = step(sim_state)
-        simulation_history[t] = sim_state
+            simulation_history[t] = sim_state
 
-    return simulation_history
+        return simulation_history
 
 
 def run_simulation_main(config: EasyDict):
