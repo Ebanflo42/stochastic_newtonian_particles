@@ -46,6 +46,7 @@ dt: 0.01
 max_init_speed: 0
 speed_limit: 1000000000
 n_particles_per_type: [2500, 2500, 2500, 2500]
+#n_particles_per_type: [100, 100, 100, 100]
 seed: 25
 num_steps: 1000
 
@@ -53,9 +54,9 @@ num_steps: 1000
 initialization_mode: "core"
 core_size: 0.125
 
-stochastic: False
+stochastic: True
 n_transfers_per_step: 100
-transfer_intensity: 0.5
+transfer_intensity: 2.0
 
-sparse: True
+sparse: False
 neighborhood_search_depth: 2
