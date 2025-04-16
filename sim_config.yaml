@@ -56,7 +56,7 @@ core_size: 0.125
 
 stochastic: True
 n_transfers_per_step: 100
-transfer_intensity: 2.0
+transfer_intensity: 0.1
 
 sparse: False
 neighborhood_search_depth: 2

@@ -218,15 +218,17 @@ def random_momentum_transfer(key: jrd.PRNGKey,
                              unsampled_indices: jnp.ndarray,
                              masses: jnp.ndarray,
                              velocity: jnp.ndarray) -> jnp.ndarray:
-    #angles = 2*jnp.pi*jrd.beta(key, transfer_intensity,
+    # angles = 2*jnp.pi*jrd.beta(key, transfer_intensity,
     #                           transfer_intensity, shape=(pairs_to_transfer.shape[0],))
-    angles = jnp.arctan(transfer_intensity*distances[pairs_to_transfer[:, 0],
-                                                     pairs_to_transfer[:, 1]])
+    # angles = 2*jnp.arctan(transfer_intensity*distances[pairs_to_transfer[:, 0],
+    #                                                   pairs_to_transfer[:, 1]])
+    angles = jnp.pi*jnp.exp(-distances[pairs_to_transfer[:, 0],
+                                       pairs_to_transfer[:, 1]]**2/transfer_intensity)
     rotation = build_rotation_matrix(pairs_to_transfer,
                                      unsampled_indices,
                                      angles,
                                      masses.shape[0])
-    #print(rotation.data.shape, jnp.linalg.det(rotation.todense()))
+    # print(rotation.data.shape, jnp.linalg.det(rotation.todense()))
     momenta = jnp.reshape(masses*velocity, (-1,))
     transferred_momenta = momenta@rotation
     transferred_velocity = jnp.reshape(transferred_momenta, (-1, 2))/masses
@@ -412,6 +414,8 @@ def simulation_init(max_init_speed: float,
 
     if initialization_mode == "uniform":
         position = jrd.uniform(seed1, (tot_particles, 2), minval=0, maxval=1)
+        velocity = max_init_speed * \
+            jrd.uniform(seed2, (tot_particles, 2), minval=-1, maxval=1)
 
     elif initialization_mode == "core":
         len_type0 = int(np.sqrt(n_particles_per_type[0]))
@@ -426,12 +430,14 @@ def simulation_init(max_init_speed: float,
 
         position = np.concatenate((position_type0, position_other), axis=0)
 
+        velocity_type0 = jnp.zeros_like(position_type0)
+        velocity_other = max_init_speed * \
+            jrd.uniform(seed2, (n_other_particles, 2), minval=-1, maxval=1)
+        velocity = np.concatenate((velocity_type0, velocity_other), axis=0)
+
     else:
         raise ValueError(
             f"Unknown initialization mode: {initialization_mode}. Supported modes are 'uniform' and 'core'.")
-
-    velocity = max_init_speed * \
-        jrd.uniform(seed2, (tot_particles, 2), minval=-1, maxval=1)
 
     return jnp.concatenate([position, velocity], axis=-1)
 

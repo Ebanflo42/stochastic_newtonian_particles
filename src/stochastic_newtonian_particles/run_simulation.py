@@ -112,7 +112,7 @@ def run_simulation_main(config: EasyDict):
         with open(os.path.join(config.results_dir, 'config.yaml'), 'w') as f:
             yaml.dump(config, f)
     elif not config.extend and \
-            os.path.exists(os.path.join(config.results_dir, 'simulation_hisory.npy')):
+            os.path.exists(os.path.join(config.results_dir, 'simulation_history.npy')):
         raise FileExistsError(
             f"Results directory {config.results_dir} already exists with simulation_history.npy. Use --extend to continue.")
 
