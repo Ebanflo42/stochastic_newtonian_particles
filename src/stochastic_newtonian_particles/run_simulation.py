@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.random as jrd
 # jax.config.update("jax_platforms", "cpu")
 # jax.config.update("jax_bcoo_cusparse_lowering", True)
-#jax.config.update("jax_array_garbage_collection_guard", "allow")
+# jax.config.update("jax_array_garbage_collection_guard", "allow")
 
 from typing import *
 from tqdm import tqdm
@@ -30,57 +30,49 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
 
     # Initialize simulation history
     n_particles = sum(config.n_particles_per_type)
-    simulation_history = np.zeros(
-        (config.num_steps, n_particles, 4))
+    if config.extend:
+        simulation_history = np.load(os.path.join(
+            config.results_dir, 'simulation_history.npy'))
+        init_t = len(simulation_history)
+        # Extend the simulation history
+        if simulation_history.shape[0] < config.num_steps:
+            simulation_history = np.concatenate(
+                [simulation_history, np.zeros((config.num_steps - simulation_history.shape[0], n_particles, 4))])
+        else:
+            raise ValueError(
+                f"Simulation history already has {simulation_history.shape[0]} steps, cannot extend to {config.num_steps}.")
+    else:
+        init_t = 1
+        simulation_history = np.zeros(
+            (config.num_steps, n_particles, 4))
 
-    if config.sparse and not config.stochastic:
-        sim_state, neighbor_matrix, dirs = simulation_init_sparse(config.max_init_speed,
-                                                                  config.n_particles_per_type,
-                                                                  config.core_size,
-                                                                  np.array(
-                                                                      config.potential_far),
-                                                                  particle_type_table,
-                                                                  key,
-                                                                  config.initialization_mode)
-        simulation_history[0] = sim_state
-        step = partial(simulation_step_sparse,
-                       jnp.array(particle_type_table),
-                       jnp.array(config.potential_peak),
-                       jnp.array(config.potential_close),
-                       jnp.array(config.potential_trough),
-                       jnp.array(config.potential_far),
-                       jnp.array(config.masses),
-                       config.speed_limit,
-                       config.dt)
-        for t in tqdm(range(1, config.num_steps)):
-            sim_state, neighbor_matrix, dirs = step(
-                sim_state, neighbor_matrix, dirs)
-            simulation_history[t] = sim_state
-        return simulation_history
-    elif not config.sparse and config.stochastic:
-        #os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-        #disable_jit()
+    force_max = (jnp.array(config.potential_peak) -
+                 jnp.array(config.potential_trough)) / jnp.array(config.potential_close)
+    force_min = jnp.array(config.potential_trough) / \
+        (jnp.array(config.potential_far) - jnp.array(config.potential_close))
+
+    if config.stochastic:
+        # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+        # disable_jit()
         sim_state = simulation_init(config.max_init_speed,
                                     config.n_particles_per_type,
                                     config.core_size,
                                     key,
                                     config.initialization_mode)
         simulation_history[0] = sim_state
-        step = make_simulation_step_stochastic(jnp.array(particle_type_table),
-                                               jnp.array(
-                                                   config.potential_peak),
-                                               jnp.array(
-                                                   config.potential_close),
-                                               jnp.array(
-                                                   config.potential_trough),
-                                               jnp.array(config.potential_far),
-                                               jnp.array(config.masses),
-                                               config.dt,
-                                               config.n_transfers_per_step,
-                                               config.transfer_intensity)
-        for t in tqdm(range(1, config.num_steps)):
+        step = \
+            make_simulation_step_stochastic(jnp.array(particle_type_table),
+                                            force_max,
+                                            jnp.array(config.potential_close),
+                                            force_min,
+                                            jnp.array(config.potential_far),
+                                            jnp.array(config.masses),
+                                            config.dt,
+                                            config.n_transfers_per_step,
+                                            config.transfer_intensity)
+        for t in tqdm(range(init_t, config.num_steps)):
             key, sim_state, v1, v2 = step(key, sim_state)
-            #print(np.array(v1), np.array(v2))
+            # print(np.array(v1), np.array(v2))
             simulation_history[t] = sim_state
         return simulation_history
     else:
@@ -92,14 +84,14 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         simulation_history[0] = sim_state
         step = jit(partial(simulation_step_deterministic,
                            jnp.array(particle_type_table),
-                           jnp.array(config.potential_peak),
+                           force_max,
                            jnp.array(config.potential_close),
-                           jnp.array(config.potential_trough),
+                           force_min,
                            jnp.array(config.potential_far),
                            jnp.array(config.masses),
                            config.speed_limit,
                            config.dt))
-        for t in tqdm(range(1, config.num_steps)):
+        for t in tqdm(range(init_t, config.num_steps)):
             sim_state = step(sim_state)
             simulation_history[t] = sim_state
 
@@ -110,7 +102,7 @@ def run_simulation_main(config: EasyDict):
     if not os.path.exists(config.results_dir):
         os.makedirs(config.results_dir)
         with open(os.path.join(config.results_dir, 'config.yaml'), 'w') as f:
-            yaml.dump(config, f)
+            yaml.dump(config.__dict__, f)
     elif not config.extend and \
             os.path.exists(os.path.join(config.results_dir, 'simulation_history.npy')):
         raise FileExistsError(
@@ -155,6 +147,14 @@ def run_simulation_entry():
         for key, value in args.__dict__.items():
             if value is not None:
                 config[key] = value
+    else:
+        config.results_dir = args.results_dir
+        if not os.path.exists(config.results_dir):
+            raise FileNotFoundError(
+                f"Results directory {config.results_dir} does not exist.")
+        with open(os.path.join(config.results_dir, 'config.yaml'), 'r') as f:
+            yaml_config = yaml.safe_load(f)
+        config.update(yaml_config)
 
     run_simulation_main(config)
 
