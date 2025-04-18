@@ -244,24 +244,22 @@ def make_simulation_step_stochastic(particle_type_table: jnp.ndarray,
         accelerations = forces/masses_gathered
 
         new_velocity = velocity + dt*accelerations
-        mean_vel1 = jnp.max(jnp.linalg.norm(new_velocity, axis=-1))
         new_velocity = random_momentum_transfer(transfer_intensity,
                                                 distances,
                                                 sampled_neighbors,
                                                 unsampled_indices,
                                                 masses_gathered,
                                                 new_velocity)
-        mean_vel2 = jnp.max(jnp.linalg.norm(new_velocity, axis=-1))
         new_position = position + dt*new_velocity
         new_position = jnp.mod(new_position, 1)
 
-        return jnp.concatenate((new_position, new_velocity), axis=-1), mean_vel1, mean_vel2
+        return jnp.concatenate((new_position, new_velocity), axis=-1)
 
     sim_step_jitted = jit(sim_step_jittable)
 
     def sim_step(key: jrd.PRNGKey,
                  sim_state: jnp.ndarray) -> Tuple[jnp.ndarray, jrd.PRNGKey]:
-        this_key, next_key = jrd.split(key, num=3)
+        this_key, next_key = jrd.split(key, num=2)
 
         sampled_neighbors = jrd.choice(this_key,
                                        sim_state.shape[0],
@@ -279,11 +277,11 @@ def make_simulation_step_stochastic(particle_type_table: jnp.ndarray,
                              if i not in sampled_indices]
         unsampled_indices = jnp.array(unsampled_indices)
 
-        next_state, v1, v2 = sim_step_jitted(sim_state,
+        next_state = sim_step_jitted(sim_state,
                                              sampled_neighbors,
                                              unsampled_indices)
 
-        return next_key, next_state, v1, v2
+        return next_key, next_state
 
     return sim_step
 
@@ -302,22 +300,25 @@ def simulation_init(max_init_speed: float,
             jrd.uniform(seed2, (tot_particles, 2), minval=-1, maxval=1)
 
     elif initialization_mode == "core":
-        len_type0 = int(np.sqrt(n_particles_per_type[0]))
-        position_type0 = np.stack(np.meshgrid(
-            np.linspace(0, 1, len_type0, endpoint=False),
-            np.linspace(0, 1, len_type0, endpoint=False),
+        len_type01 = int(np.sqrt(sum(n_particles_per_type[:2])))
+        position_type01 = np.stack(np.meshgrid(
+            np.linspace(0, 1, len_type01, endpoint=False),
+            np.linspace(0, 1, len_type01, endpoint=False),
             indexing='ij'), axis=-1).reshape(-1, 2)
 
-        n_other_particles = sum(n_particles_per_type[1:])
+        position_type0 = position_type01[0:len(position_type01):2]
+        position_type1 = position_type01[1:len(position_type01):2]
+
+        n_other_particles = sum(n_particles_per_type[2:])
         position_other = core_size * \
             (jrd.uniform(seed1, (n_other_particles, 2)) - 0.5) + 0.5
 
-        position = np.concatenate((position_type0, position_other), axis=0)
+        position = np.concatenate((position_type0, position_type1, position_other), axis=0)
 
-        velocity_type0 = jnp.zeros_like(position_type0)
+        velocity_type01 = jnp.zeros_like(position_type01)
         velocity_other = max_init_speed * \
             jrd.uniform(seed2, (n_other_particles, 2), minval=-1, maxval=1)
-        velocity = np.concatenate((velocity_type0, velocity_other), axis=0)
+        velocity = np.concatenate((velocity_type01, velocity_other), axis=0)
 
     else:
         raise ValueError(

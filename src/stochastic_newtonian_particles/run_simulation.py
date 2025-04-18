@@ -36,6 +36,7 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         init_t = len(simulation_history)
         # Extend the simulation history
         if simulation_history.shape[0] < config.num_steps:
+            sim_state = simulation_history[-1]
             simulation_history = np.concatenate(
                 [simulation_history, np.zeros((config.num_steps - simulation_history.shape[0], n_particles, 4))])
         else:
@@ -45,6 +46,12 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         init_t = 1
         simulation_history = np.zeros(
             (config.num_steps, n_particles, 4))
+        sim_state = simulation_init(config.max_init_speed,
+                                    config.n_particles_per_type,
+                                    config.core_size,
+                                    key,
+                                    config.initialization_mode)
+        simulation_history[0] = sim_state
 
     force_max = (jnp.array(config.potential_peak) -
                  jnp.array(config.potential_trough)) / jnp.array(config.potential_close)
@@ -54,12 +61,6 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
     if config.stochastic:
         # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
         # disable_jit()
-        sim_state = simulation_init(config.max_init_speed,
-                                    config.n_particles_per_type,
-                                    config.core_size,
-                                    key,
-                                    config.initialization_mode)
-        simulation_history[0] = sim_state
         step = \
             make_simulation_step_stochastic(jnp.array(particle_type_table),
                                             force_max,
@@ -71,17 +72,10 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
                                             config.n_transfers_per_step,
                                             config.transfer_intensity)
         for t in tqdm(range(init_t, config.num_steps)):
-            key, sim_state, v1, v2 = step(key, sim_state)
-            # print(np.array(v1), np.array(v2))
+            key, sim_state = step(key, sim_state)
             simulation_history[t] = sim_state
         return simulation_history
     else:
-        sim_state = simulation_init(config.max_init_speed,
-                                    config.n_particles_per_type,
-                                    config.core_size,
-                                    key,
-                                    config.initialization_mode)
-        simulation_history[0] = sim_state
         step = jit(partial(simulation_step_deterministic,
                            jnp.array(particle_type_table),
                            force_max,
@@ -122,7 +116,7 @@ def run_simulation_entry():
     parser = argparse.ArgumentParser(description="Run simulation")
 
     # command line arguments will override yaml configs
-    parser.add_argument("--config", type=str, default="sim_config.yaml")
+    parser.add_argument("--config", type=str, default=None,)
     parser.add_argument("--results_dir", type=str, default="", required=True)
     parser.add_argument("--extend", type=bool, default=False)
 
@@ -138,23 +132,27 @@ def run_simulation_entry():
 
     args = parser.parse_args()
 
-    with open(args.__dict__['config'], 'r') as f:
-        yaml_config = yaml.safe_load(f)
-
-    config = EasyDict(yaml_config)
-    config.extend = args.extend
-    if not config.extend:
+    if args.__dict__['config'] is not None:
+        with open(args.__dict__['config'], 'r') as f:
+            yaml_config = yaml.safe_load(f)
+        config = EasyDict(yaml_config)
+        for key, value in args.__dict__.items():
+            if value is not None:
+                config[key] = value
+    elif args.__dict__['extend']:
+        results_dir = args.__dict__['results_dir']
+        if not os.path.exists(results_dir):
+            raise FileNotFoundError(
+                f"Results directory {results_dir} does not exist.")
+        with open(os.path.join(results_dir, 'config.yaml'), 'r') as f:
+            yaml_config = yaml.safe_load(f)
+        config = EasyDict(yaml_config)
         for key, value in args.__dict__.items():
             if value is not None:
                 config[key] = value
     else:
-        config.results_dir = args.results_dir
-        if not os.path.exists(config.results_dir):
-            raise FileNotFoundError(
-                f"Results directory {config.results_dir} does not exist.")
-        with open(os.path.join(config.results_dir, 'config.yaml'), 'r') as f:
-            yaml_config = yaml.safe_load(f)
-        config.update(yaml_config)
+        raise ValueError(
+            "Either config file or results directory must be provided.")
 
     run_simulation_main(config)
 
