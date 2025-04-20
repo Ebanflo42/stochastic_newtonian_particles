@@ -93,7 +93,7 @@ def potential(peak_gathered: jnp.ndarray,
     tot_potential = close_potential*jnp.heaviside(1 - close_t, 0) + \
         far_potential*jnp.heaviside(far_t, 0)*jnp.heaviside(1 - far_t, 0)
 
-    return mask*tot_potential
+    return jnp.sum(mask*tot_potential, axis=0)
 
 
 def compute_forces(max_gathered: jnp.ndarray,
@@ -164,17 +164,7 @@ def simulation_step_deterministic(particle_type_table: jnp.ndarray,
     position_tiled = jnp.tile(position[jnp.newaxis], (position.shape[0], 1, 1))
     diff = get_diff_wrapped(position, jnp.transpose(position_tiled, (1, 0, 2)))
     dist_mat = jnp.sqrt(jnp.sum(diff**2, axis=-1))
-    """
-    potentials = potential(peak_gathered,
-                           close_gathered,
-                           trough_gathered,
-                           far_gathered,
-                           dist_mat)
 
-    # changing the axis of the summation here will reverse the sign of the force
-    accelerations = jnp.sum(
-        potentials[..., jnp.newaxis]*diff, axis=0)/masses[particle_type_table, jnp.newaxis]
-    """
     # compute forces
     forces = compute_forces(peak_gathered,
                             close_gathered,
@@ -194,6 +184,62 @@ def simulation_step_deterministic(particle_type_table: jnp.ndarray,
     return jnp.concatenate((new_position, new_velocity), axis=-1)
 
 
+def simulation_step_deterministic_energy_log(particle_type_table: jnp.ndarray,
+                                             force_max: jnp.ndarray,
+                                             potential_close: jnp.ndarray,
+                                             force_min: jnp.ndarray,
+                                             potential_far: jnp.ndarray,
+                                             masses: jnp.ndarray,
+                                             speed_limit: float,
+                                             dt: float,
+                                             sim_state: jnp.ndarray
+                                             ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    position, velocity = sim_state[:, :2], sim_state[:, 2:]
+
+    tiled_particle_type_table = jnp.tile(
+        particle_type_table[jnp.newaxis], (particle_type_table.shape[0], 1))
+    particle_indices = jnp.stack(
+        (tiled_particle_type_table, tiled_particle_type_table.T), axis=-1)
+
+    peak_gathered = vmap(
+        vmap(lambda i: force_max[i[0], i[1]]))(particle_indices)
+    close_gathered = vmap(
+        vmap(lambda i: potential_close[i[0], i[1]]))(particle_indices)
+    trough_gathered = vmap(
+        vmap(lambda i: force_min[i[0], i[1]]))(particle_indices)
+    far_gathered = vmap(vmap(lambda i: potential_far[i[0], i[1]]))(
+        particle_indices)
+
+    # compute difference vectors and distance matrix
+    position_tiled = jnp.tile(position[jnp.newaxis], (position.shape[0], 1, 1))
+    diff = get_diff_wrapped(position, jnp.transpose(position_tiled, (1, 0, 2)))
+    dist_mat = jnp.sqrt(jnp.sum(diff**2, axis=-1))
+
+    potentials = potential(peak_gathered,
+                           close_gathered,
+                           trough_gathered,
+                           far_gathered,
+                           dist_mat)
+
+    # compute forces
+    forces = compute_forces(peak_gathered,
+                            close_gathered,
+                            trough_gathered,
+                            far_gathered,
+                            dist_mat,
+                            diff)
+    accelerations = forces/masses[particle_type_table, jnp.newaxis]
+
+    new_velocity = velocity + dt*accelerations
+    speed = jnp.sqrt(jnp.sum(new_velocity**2, axis=-1))[..., jnp.newaxis]
+    new_velocity = jnp.where(
+        speed > speed_limit, speed_limit*new_velocity/speed, new_velocity)
+    new_position = position + dt*new_velocity
+    new_position = jnp.mod(new_position, 1)
+
+    return jnp.concatenate((new_position, new_velocity), axis=-1), potentials
+
+
 def make_simulation_step_stochastic(particle_type_table: jnp.ndarray,
                                     force_max: jnp.ndarray,
                                     potential_close: jnp.ndarray,
@@ -204,11 +250,11 @@ def make_simulation_step_stochastic(particle_type_table: jnp.ndarray,
                                     n_transfers_per_step: int,
                                     transfer_intensity: float) -> Callable:
 
-    #def get_diff_matrix(position: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    # def get_diff_matrix(position: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
 
-    #get_diff_matrix_jitted = jit(get_diff_matrix)
+    # get_diff_matrix_jitted = jit(get_diff_matrix)
 
-    def sim_step_jittable(sim_state:jnp.ndarray,
+    def sim_step_jittable(sim_state: jnp.ndarray,
                           sampled_neighbors: jnp.ndarray,
                           unsampled_indices: jnp.ndarray
                           ) -> Tuple[jnp.ndarray, jrd.PRNGKey]:
@@ -278,8 +324,8 @@ def make_simulation_step_stochastic(particle_type_table: jnp.ndarray,
         unsampled_indices = jnp.array(unsampled_indices)
 
         next_state = sim_step_jitted(sim_state,
-                                             sampled_neighbors,
-                                             unsampled_indices)
+                                     sampled_neighbors,
+                                     unsampled_indices)
 
         return next_key, next_state
 
@@ -313,7 +359,8 @@ def simulation_init(max_init_speed: float,
         position_other = core_size * \
             (jrd.uniform(seed1, (n_other_particles, 2)) - 0.5) + 0.5
 
-        position = np.concatenate((position_type0, position_type1, position_other), axis=0)
+        position = np.concatenate(
+            (position_type0, position_type1, position_other), axis=0)
 
         velocity_type01 = jnp.zeros_like(position_type01)
         velocity_other = max_init_speed * \

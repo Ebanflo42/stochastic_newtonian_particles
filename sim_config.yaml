@@ -32,22 +32,21 @@ potential_far:
   - [0.02, 0.04, 0.08, 0.08]
   - [0.04, 0.08, 0.08, 0.04]
 
-masses: [1, 1, 1, 1]
+masses: [1, 2, 3, 4]
 dt: 0.01
 max_init_speed: 0
 speed_limit: 1000000000
 n_particles_per_type: [2450, 2450, 2450, 2450]
 #n_particles_per_type: [100, 100, 100, 100]
 seed: 24
-num_steps: 1000
+num_steps: 100
 
 # "core" or "uniform"
 initialization_mode: "core"
 core_size: 0.125
 
-stochastic: True
+stochastic: False
 n_transfers_per_step: 4000
 transfer_intensity: 0.0003
 
-sparse: False
-neighborhood_search_depth: 2
+log_energy: True
