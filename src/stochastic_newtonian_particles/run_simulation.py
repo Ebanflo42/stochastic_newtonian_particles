@@ -77,21 +77,22 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         return simulation_history
     else:
         if config.log_energy:
-            potential_energy = np.zeros((config.num_steps, n_particles))
+            tot_potential_energy = np.zeros((config.num_steps,))
             step = jit(partial(simulation_step_deterministic_energy_log,
                                jnp.array(particle_type_table),
                                force_max,
+                               jnp.array(config.potential_peak),
                                jnp.array(config.potential_close),
                                force_min,
+                               jnp.array(config.potential_trough),
                                jnp.array(config.potential_far),
                                jnp.array(config.masses),
-                               config.speed_limit,
                                config.dt))
             for t in tqdm(range(init_t, config.num_steps)):
                 sim_state, potential = step(sim_state)
                 simulation_history[t] = sim_state
-                potential_energy[t] = potential
-            return simulation_history, potential_energy
+                tot_potential_energy[t] = potential
+            return simulation_history, tot_potential_energy
         else:
             step = jit(partial(simulation_step_deterministic,
                                jnp.array(particle_type_table),
@@ -121,12 +122,12 @@ def run_simulation_main(config: EasyDict):
     simulation_history = run_simulation_loop(config)
 
     if config.log_energy:
-        potential_energy = simulation_history[1]
+        tot_potential_energy = simulation_history[1]
         simulation_history = simulation_history[0]
-        np.save(os.path.join(config.results_dir, 'potential_energy.npy'),
-                potential_energy)
+        np.save(os.path.join(config.results_dir, 'tot_potential_energy.npy'),
+                tot_potential_energy)
         plot_energy_and_momentum(np.array(simulation_history),
-                                 np.array(potential_energy),
+                                 np.array(tot_potential_energy),
                                  np.array(config.masses),
                                  config.n_particles_per_type,
                                  os.path.join(config.results_dir,

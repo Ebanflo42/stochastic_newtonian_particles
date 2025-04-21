@@ -46,22 +46,24 @@ def plot_energy_and_momentum(simulation_history: np.ndarray,
 
     momentum = mass_table[np.newaxis, :, np.newaxis]*simulation_history[:, :, 2:4]
     kinetic_energy = np.sum(0.5*np.sum(momentum**2, axis=-1)/mass_table, axis=-1)
-    momentum = np.sum(momentum, axis=-1)
+    momentum = np.sum(momentum, axis=1)
 
     fig = plt.figure()
     axk = fig.add_subplot(2, 2, 1)
     axk.plot(np.arange(simulation_history.shape[0]),
              kinetic_energy)
     axk.set_title("Kinetic Energy")
+
     axp = fig.add_subplot(2, 2, 2)
     axp.plot(np.arange(simulation_history.shape[0]),
-             np.sum(potential_energy, axis=-1))
+             potential_energy)
     axp.set_title("Potential Energy")
+
     axt = fig.add_subplot(2, 2, 3)
     axt.plot(np.arange(simulation_history.shape[0]),
-             np.sum(potential_energy, axis=-1) + \
-                np.sum(potential_energy, axis=-1))
+             potential_energy + kinetic_energy)
     axt.set_title("Total Energy")
+
     axm = fig.add_subplot(2, 2, 4)
     axm.plot(np.arange(simulation_history.shape[0]),
             momentum[:, 0],
@@ -69,6 +71,7 @@ def plot_energy_and_momentum(simulation_history: np.ndarray,
     axm.plot(np.arange(simulation_history.shape[0]),
             momentum[:, 1],
             label='Momentum Y')
+
     axm.legend()
     plt.tight_layout()
     plt.savefig(filename)
