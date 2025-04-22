@@ -80,12 +80,8 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
             tot_potential_energy = np.zeros((config.num_steps,))
             step = jit(partial(simulation_step_deterministic_energy_log,
                                jnp.array(particle_type_table),
-                               force_max,
-                               jnp.array(config.potential_peak),
-                               jnp.array(config.potential_close),
-                               force_min,
                                jnp.array(config.potential_trough),
-                               jnp.array(config.potential_far),
+                               jnp.array(config.potential_close),
                                jnp.array(config.masses),
                                config.dt))
             for t in tqdm(range(init_t, config.num_steps)):
@@ -96,12 +92,9 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         else:
             step = jit(partial(simulation_step_deterministic,
                                jnp.array(particle_type_table),
-                               force_max,
+                               jnp.array(config.potential_trough),
                                jnp.array(config.potential_close),
-                               force_min,
-                               jnp.array(config.potential_far),
                                jnp.array(config.masses),
-                               config.speed_limit,
                                config.dt))
             for t in tqdm(range(init_t, config.num_steps)):
                 sim_state = step(sim_state)
