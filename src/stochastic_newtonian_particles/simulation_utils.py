@@ -350,8 +350,8 @@ def simulation_init(max_init_speed: float,
     elif initialization_mode == "core":
         len_type01 = int(np.sqrt(sum(n_particles_per_type[:1])))
         position_type01 = np.stack(np.meshgrid(
-            np.linspace(0, 1, len_type01, endpoint=False),
-            np.linspace(0, 1, len_type01, endpoint=False),
+            np.linspace(0, 1, 1 + len_type01, endpoint=True)[1:],
+            np.linspace(0, 1, 1 + len_type01, endpoint=True)[1:],
             indexing='ij'), axis=-1).reshape(-1, 2)
 
         # position_type0 = position_type01[0:len(position_type01):2]

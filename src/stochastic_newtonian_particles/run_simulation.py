@@ -132,6 +132,9 @@ def run_simulation_main(config: EasyDict):
                                  config.n_particles_per_type,
                                  os.path.join(config.results_dir,
                                               'energy_and_momentum.png'))
+        plot_velocity_histograms(np.array(simulation_history),
+                                 os.path.join(config.results_dir,
+                                              'velocity_histograms.png'))
 
     np.save(os.path.join(config.results_dir, 'simulation_history.npy'),
             simulation_history)

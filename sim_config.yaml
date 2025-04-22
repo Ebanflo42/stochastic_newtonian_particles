@@ -20,8 +20,8 @@ potential_trough:
   - [-0.005,  -0.02, -0.01,  -0.01]
 
 potential_peak:
-  - [ 0.1, 0.025, 0.005, 0.005]
-  - [0.025,  0.1,  0.01, 0.005]
+  - [ 1, 0.25, 0.005, 0.005]
+  - [0.25,  1,  0.01, 0.005]
   - [0.005,  0.01,  0.01, 0.01]
   - [0.005, 0.005, 0.01,  0.01]
 
@@ -32,17 +32,19 @@ potential_far:
   - [0.04, 0.08, 0.08, 0.04]
 
 masses: [1, 1]
-dt: 0.01
+dt: 0.001
 max_init_speed: 0
 speed_limit: 1000000000
 #n_particles_per_type: [7225, 7225]
-n_particles_per_type: [2500, 2500]
+#n_particles_per_type: [2500, 2500]
+n_particles_per_type: [3600, 3600]
+#n_particles_per_type: [1000, 1000]
 #n_particles_per_type: [100, 100, 100, 100]
-seed: 24
-num_steps: 100
+seed: 28
+num_steps: 1000
 
 # "core" or "uniform"
-initialization_mode: "core"
+initialization_mode: "uniform"
 core_size: 0.125
 
 stochastic: False
