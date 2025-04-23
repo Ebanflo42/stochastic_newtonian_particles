@@ -14,10 +14,10 @@ potential_close:
   - [0.0011, 0.0011, 0.000001, 0.000001]
 
 potential_trough:
-  - [10000, 2500, 1000, 1000]
-  - [2500, 10000, 1000, 1000]
-  - [1000, 1000, 100000000, 400000000]
-  - [1000, 1000, 400000000, 100000000]
+  - [10000, 2500, 100, 100]
+  - [2500, 10000, 100, 100]
+  - [100, 100, 1000000000, 4000000000]
+  - [100, 100, 4000000000, 1000000000]
 
 potential_peak:
   - [ 1, 0.25, 0.002, 0.002]
@@ -31,13 +31,17 @@ potential_far:
   - [0.02, 0.04, 0.08, 0.08]
   - [0.04, 0.08, 0.08, 0.04]
 
-masses: [1, 2, 4, 8]
+masses: [1, 1, 1, 1]
 dt: 0.01
 max_init_speed: 0
 speed_limit: 1000000000
 #n_particles_per_type: [7225, 7225]
 #n_particles_per_type: [2500, 2500]
-n_particles_per_type: [2450, 2450, 2450, 2450]
+#n_particles_per_type: [2450, 2450, 2450, 2450]
+#n_particles_per_type: [3200, 3200, 3200, 3200]
+#n_particles_per_type: [3698, 3698, 3698, 3698]
+n_particles_per_type: [4050, 4050, 4050, 4050]
+#n_particles_per_type: [6050, 6050, 6050, 6050]
 #n_particles_per_type: [1000, 1000]
 #n_particles_per_type: [100, 100, 100, 100]
 seed: 24
@@ -47,8 +51,8 @@ num_steps: 1000
 initialization_mode: "core"
 core_size: 0.125
 
-stochastic: False
-n_transfers_per_step: 2000
-transfer_intensity: 0.001
+stochastic: True
+n_transfers_per_step: 4000
+transfer_intensity: 0.004
 
-log_energy: False
+log_energy: True
