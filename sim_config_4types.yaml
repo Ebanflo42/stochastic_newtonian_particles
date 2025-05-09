@@ -39,7 +39,7 @@ speed_limit: 1000000000
 n_particles_per_type: [2450, 2450, 2450, 2450]
 #n_particles_per_type: [100, 100, 100, 100]
 seed: 24
-num_steps: 100
+num_steps: 300
 
 # "core" or "uniform"
 initialization_mode: "core"

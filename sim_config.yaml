@@ -44,7 +44,7 @@ seed: 28
 num_steps: 1000
 
 # "core" or "uniform"
-initialization_mode: "uniform"
+initialization_mode: "core"
 core_size: 0.125
 
 stochastic: False

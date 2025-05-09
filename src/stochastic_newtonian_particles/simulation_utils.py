@@ -348,21 +348,21 @@ def simulation_init(max_init_speed: float,
             jrd.uniform(seed2, (tot_particles, 2), minval=-1, maxval=1)
 
     elif initialization_mode == "core":
-        len_type01 = int(np.sqrt(sum(n_particles_per_type[:1])))
+        len_type01 = int(np.sqrt(sum(n_particles_per_type[:2])))
         position_type01 = np.stack(np.meshgrid(
             np.linspace(0, 1, 1 + len_type01, endpoint=True)[1:],
             np.linspace(0, 1, 1 + len_type01, endpoint=True)[1:],
             indexing='ij'), axis=-1).reshape(-1, 2)
 
-        # position_type0 = position_type01[0:len(position_type01):2]
-        # position_type1 = position_type01[1:len(position_type01):2]
+        position_type0 = position_type01[0:len(position_type01):2]
+        position_type1 = position_type01[1:len(position_type01):2]
 
-        n_other_particles = sum(n_particles_per_type[1:])
+        n_other_particles = sum(n_particles_per_type[2:])
         position_other = core_size * \
             (jrd.uniform(seed1, (n_other_particles, 2)) - 0.5) + 0.5
 
         position = np.concatenate(
-            (position_type01, position_other), axis=0)
+            (position_type0, position_type1, position_other), axis=0)
 
         velocity_type01 = jnp.zeros_like(position_type01)
         velocity_other = max_init_speed * \

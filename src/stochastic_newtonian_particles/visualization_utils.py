@@ -62,7 +62,8 @@ def plot_energy_and_momentum(simulation_history: np.ndarray,
 
     axt = fig.add_subplot(2, 2, 3)
     axt.plot(np.arange(simulation_history.shape[0] - 1),
-             (potential_energy[1:].max() - potential_energy[1:])/kinetic_energy[1:])
+             kinetic_energy[1:] + potential_energy[1:])
+             #(potential_energy[1:].max() - potential_energy[1:])/kinetic_energy[1:])
     axt.set_title("Total Energy")
 
     axm = fig.add_subplot(2, 2, 4)
@@ -70,11 +71,11 @@ def plot_energy_and_momentum(simulation_history: np.ndarray,
     axm.plot(np.arange(simulation_history.shape[0] - 1),
             momentum[1:, 0],
             label='Momentum X')
-    #axm.plot(np.arange(simulation_history.shape[0]),
-    #        momentum[..., 1],
-    #        label='Momentum Y')
+    axm.plot(np.arange(simulation_history.shape[0]),
+            momentum[..., 1],
+            label='Momentum Y')
 
-    #axm.legend()
+    axm.legend()
     fig.tight_layout()
     plt.savefig(filename)
 
