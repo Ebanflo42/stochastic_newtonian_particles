@@ -96,6 +96,7 @@ def build_rotation_matrix(pairs: jnp.ndarray,
     #                          s, c - 1, z, 1 + c,
     #                          1 - c,  s, 1 + c, z,
     #                          2*jnp.ones((2*len(unsampled_indices),))], axis=0)
+    print(values.shape, indices.shape)
     return sparse.BCOO((0.5*values, indices), shape=(2*n_particles, 2*n_particles))
 
 
