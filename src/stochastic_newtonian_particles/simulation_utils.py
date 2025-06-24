@@ -18,8 +18,10 @@ def get_diff_wrapped(p1, p2):
     return diff
 
 
-def lennard_jones(trough_gathered: jnp.ndarray,
+def lennard_jones(peak_gathered: jnp.ndarray,
+                  trough_gathered: jnp.ndarray,
                   close_gathered: jnp.ndarray,
+                  far_gathered: jnp.ndarray,
                   positions: jnp.ndarray) -> float:
     positions_tiled = jnp.tile(
         positions[jnp.newaxis], (positions.shape[0], 1, 1))
@@ -27,11 +29,32 @@ def lennard_jones(trough_gathered: jnp.ndarray,
         positions_tiled, jnp.transpose(positions_tiled, (1, 0, 2)))
 
     sq_dist_mat = jnp.sum(diffs**2, axis=-1)
-    six_dist_mat = sq_dist_mat**3
-    twlv_dist_mat = six_dist_mat**2
+    quart_dist_mat = sq_dist_mat**2
+    #six_dist_mat = sq_dist_mat**3
+    #twlv_dist_mat = six_dist_mat**2
 
-    potentials = 4*trough_gathered*(close_gathered**12/(1e-12 + twlv_dist_mat) +
-                                    close_gathered**6/(1e-12 + six_dist_mat))
+    potentials = 4*trough_gathered*(close_gathered**4/(1e-12 + quart_dist_mat) +
+                                    close_gathered**2/(1e-12 + sq_dist_mat))
+
+    potentials_masked = jnp.tril(potentials, k=-1)
+
+    return jnp.sum(potentials_masked)
+
+
+def diff_gaussians(peak_gathered: jnp.ndarray,
+                   trough_gathered: jnp.ndarray,
+                   close_gathered: jnp.ndarray,
+                   far_gathered: jnp.ndarray,
+                   positions: jnp.ndarray) -> float:
+    positions_tiled = jnp.tile(
+        positions[jnp.newaxis], (positions.shape[0], 1, 1))
+    diffs = get_diff_wrapped(
+        positions_tiled, jnp.transpose(positions_tiled, (1, 0, 2)))
+
+    sq_dist_mat = jnp.sum(diffs**2, axis=-1)
+
+    potentials = peak_gathered*jnp.exp(-close_gathered*sq_dist_mat) - \
+        trough_gathered*jnp.exp(-far_gathered*sq_dist_mat**2)
 
     potentials_masked = jnp.tril(potentials, k=-1)
 
@@ -122,25 +145,6 @@ def potential(peak_gathered: jnp.ndarray,
     return jnp.sum(mask*tot_potential)
 
 
-def compute_forces(max_gathered: jnp.ndarray,
-                   close_gathered: jnp.ndarray,
-                   min_gathered: jnp.ndarray,
-                   far_gathered: jnp.ndarray,
-                   distances: jnp.ndarray,
-                   diffs: jnp.ndarray) -> jnp.ndarray:
-    # don't compute a self-interaction potential,
-    # as that would be meaningless
-    mask = 1 - jnp.eye(distances.shape[0])
-
-    close_t = distances/close_gathered
-    magnitude = max_gathered*jnp.heaviside(1 - close_t, 0) + \
-        min_gathered*jnp.heaviside(close_t, 0) * \
-        jnp.heaviside(1 - distances/far_gathered, 0)
-    magnitude *= mask
-
-    return jnp.sum(magnitude[..., jnp.newaxis]*diffs, axis=0)
-
-
 def random_momentum_transfer(transfer_intensity: float,
                              distances: jnp.ndarray,
                              pairs_to_transfer: jnp.ndarray,
@@ -162,10 +166,14 @@ def random_momentum_transfer(transfer_intensity: float,
 
 
 def simulation_step_deterministic(particle_type_table: jnp.ndarray,
+                                  potential_peak: jnp.ndarray,
                                   potential_trough: jnp.ndarray,
                                   potential_close: jnp.ndarray,
+                                  potential_far: jnp.ndarray,
                                   masses: jnp.ndarray,
                                   dt: float,
+                                  speed_limit: float,
+                                  potential_fun: Callable,
                                   sim_state: jnp.ndarray
                                   ) -> jnp.ndarray:
     position, velocity = sim_state[:, :2], sim_state[:, 2:]
@@ -175,13 +183,17 @@ def simulation_step_deterministic(particle_type_table: jnp.ndarray,
     particle_indices = jnp.stack(
         (tiled_particle_type_table, tiled_particle_type_table.T), axis=-1)
 
+    peak_gathered = vmap(
+        vmap(lambda i: potential_peak[i[0], i[1]]))(particle_indices)
     trough_gathered = vmap(
         vmap(lambda i: potential_trough[i[0], i[1]]))(particle_indices)
     close_gathered = vmap(
         vmap(lambda i: potential_close[i[0], i[1]]))(particle_indices)
+    far_gathered = vmap(
+        vmap(lambda i: potential_far[i[0], i[1]]))(particle_indices)
 
-    lj = partial(lennard_jones, trough_gathered, close_gathered)
-    force_fn = jax.grad(lj)
+    pot = partial(potential_fun, peak_gathered, trough_gathered, close_gathered, far_gathered)
+    force_fn = jax.grad(pot)
     forces = -force_fn(position)
 
     # compute forces
@@ -189,6 +201,10 @@ def simulation_step_deterministic(particle_type_table: jnp.ndarray,
     accelerations = forces/masses[particle_type_table, jnp.newaxis]
 
     new_velocity = velocity + dt*accelerations
+    speed = jnp.sqrt(jnp.sum(new_velocity**2, axis=-1, keepdims=True))
+    new_velocity = jnp.where(speed > speed_limit,
+                            speed_limit*new_velocity/speed,
+                            new_velocity)
     new_position = position + dt*new_velocity
     new_position = jnp.mod(new_position, 1)
 

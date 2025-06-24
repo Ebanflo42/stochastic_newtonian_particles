@@ -28,6 +28,14 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
 
     key = jrd.PRNGKey(config.seed)
 
+    if config.potential_name == "diff_gaussians":
+        potential_fun = diff_gaussians
+    elif config.potential_name == "lennard_jones":
+        potential_fun = lennard_jones
+    else:
+        raise ValueError(
+            f"Unknown potential name {config.potential_name}. Use 'diff_gaussians' or 'lennard_jones'.")
+
     # Initialize simulation history
     n_particles = sum(config.n_particles_per_type)
     print(config.n_particles_per_type)
@@ -110,11 +118,17 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         else:
             step = jit(partial(simulation_step_deterministic,
                                jnp.array(particle_type_table),
+                               jnp.array(config.potential_peak,
+                                         dtype=jnp.float32),
                                jnp.array(config.potential_trough,
                                          dtype=jnp.float32),
                                jnp.array(config.potential_close),
+                               jnp.array(config.potential_far,
+                                         dtype=jnp.float32),
                                jnp.array(config.masses),
-                               config.dt))
+                               config.dt,
+                               config.speed_limit,
+                               potential_fun))
             for t in tqdm(range(init_t, config.num_steps)):
                 sim_state = step(sim_state)
                 simulation_history[t] = sim_state

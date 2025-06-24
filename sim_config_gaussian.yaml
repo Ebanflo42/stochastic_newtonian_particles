@@ -1,0 +1,39 @@
+palette: [ [ 0, 255, 0 ],
+           [ 100, 50, 200 ]]
+
+potential_close:
+  - [128, 64]
+  - [64, 128]
+
+potential_trough:
+  - [1, 2]
+  - [2, 2]
+
+potential_peak:
+  - [ 2, 2]
+  - [2,  4]
+
+potential_far:
+  - [0.125, 0.5]
+  - [0.5, 0.25]
+
+# diff_gaussians or lennard_jones
+potential_name: "diff_gaussians"
+
+masses: [1, 1]
+dt: 0.001
+max_init_speed: 0
+speed_limit: 1
+n_particles_per_type: [6000, 6000]
+seed: 24
+num_steps: 2000
+
+# "core" or "uniform"
+initialization_mode: "uniform"
+core_size: 0.125
+
+stochastic: False
+n_transfers_per_step: 4000
+transfer_intensity: 0.004
+
+log_energy: False
