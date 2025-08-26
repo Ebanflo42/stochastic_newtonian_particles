@@ -13,7 +13,8 @@ from typing import *
 from tqdm import tqdm
 from functools import partial
 from easydict import EasyDict
-from jax import jit, disable_jit
+from jax import jit
+jax.config.update('jax_disable_jit', True)
 
 from stochastic_newtonian_particles.simulation_utils import *
 from stochastic_newtonian_particles.visualization_utils import *
@@ -32,6 +33,8 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         potential_fun = diff_gaussians
     elif config.potential_name == "lennard_jones":
         potential_fun = lennard_jones
+    elif config.potential_name == "piecewise_linear":
+        potential_fun = piecewise_linear
     else:
         raise ValueError(
             f"Unknown potential name {config.potential_name}. Use 'diff_gaussians' or 'lennard_jones'.")
@@ -61,76 +64,90 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
                                     key,
                                     config.initialization_mode)
         simulation_history[0] = sim_state
-    print(simulation_history.shape)
-    # force_max = (jnp.array(config.potential_peak) -
-    #             jnp.array(config.potential_trough)) / jnp.array(config.potential_close)
-    # force_min = jnp.array(config.potential_trough) / \
-    #    (jnp.array(config.potential_far) - jnp.array(config.potential_close))
 
+    # the simulation step will have a different type signature
+    # depending on whether the simulation is deterministic or stochastic
+    # and whether or not we log the potential energy/momentum
     if config.stochastic:
-        # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-        # disable_jit()
         if config.log_energy:
-            tot_potential_energy = np.zeros((config.num_steps,))
-            step = \
+            sim_step = \
                 make_simulation_step_stochastic_energy_log(
                     jnp.array(particle_type_table),
+                    jnp.array(config.potential_peak),
                     jnp.array(config.potential_trough, dtype=jnp.float32),
                     jnp.array(config.potential_close),
+                    jnp.array(config.potential_far),
                     jnp.array(config.masses),
                     config.dt,
+                    config.transfer_intensity,
                     config.n_transfers_per_step,
-                    config.transfer_intensity)
+                    potential_fun)
+        else:
+            sim_step = \
+                make_simulation_step_stochastic(
+                    jnp.array(particle_type_table),
+                    jnp.array(config.potential_peak),
+                    jnp.array(config.potential_trough, dtype=jnp.float32),
+                    jnp.array(config.potential_close),
+                    jnp.array(config.potential_far),
+                    jnp.array(config.masses),
+                    config.dt,
+                    config.transfer_intensity,
+                    config.n_transfers_per_step,
+                    potential_fun)
+    else:
+        if config.log_energy:
+            sim_step = \
+                jit(partial(simulation_step_deterministic_energy_log,
+                            jnp.array(particle_type_table),
+                            jnp.array(config.potential_peak),
+                            jnp.array(config.potential_trough,
+                                      dtype=jnp.float32),
+                            jnp.array(config.potential_close),
+                            jnp.array(config.potential_far),
+                            jnp.array(config.masses),
+                            config.dt,
+                            config.speed_limit,
+                            potential_fun))
+        else:
+            sim_step = \
+                jit(partial(simulation_step_deterministic,
+                            jnp.array(particle_type_table),
+                            jnp.array(config.potential_peak),
+                            jnp.array(config.potential_trough,
+                                      dtype=jnp.float32),
+                            jnp.array(config.potential_close),
+                            jnp.array(config.potential_far),
+                            jnp.array(config.masses),
+                            config.dt,
+                            config.speed_limit,
+                            potential_fun))
+
+    if config.stochastic:
+        if config.log_energy:
+            tot_potential_energy = np.zeros((config.num_steps,))
             for t in tqdm(range(init_t, config.num_steps)):
-                key, sim_state, potential = step(key, sim_state)
+                key, sim_state, potential = sim_step(key, sim_state)
                 simulation_history[t] = sim_state
                 tot_potential_energy[t] = potential
             return simulation_history, tot_potential_energy
         else:
-            step = \
-                make_simulation_step_stochastic(
-                    jnp.array(particle_type_table),
-                    jnp.array(config.potential_trough, dtype=jnp.float32),
-                    jnp.array(config.potential_close),
-                    jnp.array(config.masses),
-                    config.dt,
-                    config.n_transfers_per_step,
-                    config.transfer_intensity)
             for t in tqdm(range(init_t, config.num_steps)):
-                key, sim_state = step(key, sim_state)
+                key, sim_state = sim_step(key, sim_state)
                 simulation_history[t] = sim_state
             return simulation_history
     else:
         if config.log_energy:
             tot_potential_energy = np.zeros((config.num_steps,))
-            step = jit(partial(simulation_step_deterministic_energy_log,
-                               jnp.array(particle_type_table),
-                               jnp.array(config.potential_trough,
-                                         dtype=jnp.float32),
-                               jnp.array(config.potential_close),
-                               jnp.array(config.masses),
-                               config.dt))
             for t in tqdm(range(init_t, config.num_steps)):
-                sim_state, potential = step(sim_state)
+                sim_state, potential = sim_step(sim_state)
                 simulation_history[t] = sim_state
                 tot_potential_energy[t] = potential
             return simulation_history, tot_potential_energy
         else:
-            step = jit(partial(simulation_step_deterministic,
-                               jnp.array(particle_type_table),
-                               jnp.array(config.potential_peak,
-                                         dtype=jnp.float32),
-                               jnp.array(config.potential_trough,
-                                         dtype=jnp.float32),
-                               jnp.array(config.potential_close),
-                               jnp.array(config.potential_far,
-                                         dtype=jnp.float32),
-                               jnp.array(config.masses),
-                               config.dt,
-                               config.speed_limit,
-                               potential_fun))
             for t in tqdm(range(init_t, config.num_steps)):
-                sim_state = step(sim_state)
+                print(np.all(sim_state == sim_state))
+                sim_state = sim_step(sim_state)
                 simulation_history[t] = sim_state
             return simulation_history
 
@@ -217,7 +234,7 @@ def run_simulation_entry():
 
 
 if __name__ == "__main__":
-    with open("sim_config.yaml", 'r') as f:
+    with open("sim_config_4types.yaml", 'r') as f:
         yaml_config = yaml.safe_load(f)
     config = EasyDict(yaml_config)
     config.results_dir = "results/debug"

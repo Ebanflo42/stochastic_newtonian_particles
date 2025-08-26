@@ -8,6 +8,8 @@ palette: [ [ 75, 200, 50 ],
            [ 127, 0, 255 ],
            [ 0, 127, 255 ]]
 
+potential_name: piecewise_linear
+
 potential_close:
   - [0.005, 0.01, 0.005, 0.01]
   - [ 0.01, 0.01,  0.01, 0.02]
@@ -35,18 +37,18 @@ potential_far:
 masses: [1, 2, 3, 4]
 dt: 0.01
 max_init_speed: 0
-speed_limit: 1000000000
-n_particles_per_type: [2450, 2450, 2450, 2450]
+speed_limit: 1
+n_particles_per_type: [20, 20, 20, 20]
 #n_particles_per_type: [100, 100, 100, 100]
 seed: 24
 num_steps: 300
 
 # "core" or "uniform"
-initialization_mode: "core"
+initialization_mode: "uniform"
 core_size: 0.125
 
 stochastic: False
 n_transfers_per_step: 4000
 transfer_intensity: 0.0003
 
-log_energy: True
+log_energy: False
