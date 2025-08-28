@@ -14,7 +14,7 @@ from tqdm import tqdm
 from functools import partial
 from easydict import EasyDict
 from jax import jit
-jax.config.update('jax_disable_jit', True)
+#jax.config.update('jax_disable_jit', True)
 
 from stochastic_newtonian_particles.simulation_utils import *
 from stochastic_newtonian_particles.visualization_utils import *
@@ -33,15 +33,14 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
         potential_fun = diff_gaussians
     elif config.potential_name == "lennard_jones":
         potential_fun = lennard_jones
-    elif config.potential_name == "piecewise_linear":
-        potential_fun = piecewise_linear
+    elif config.potential_name == "quadratic":
+        potential_fun = quadratic
     else:
         raise ValueError(
             f"Unknown potential name {config.potential_name}. Use 'diff_gaussians' or 'lennard_jones'.")
 
     # Initialize simulation history
     n_particles = sum(config.n_particles_per_type)
-    print(config.n_particles_per_type)
     if config.extend:
         simulation_history = np.load(os.path.join(
             config.results_dir, 'simulation_history.npy'))
@@ -146,13 +145,33 @@ def run_simulation_loop(config: EasyDict) -> np.ndarray:
             return simulation_history, tot_potential_energy
         else:
             for t in tqdm(range(init_t, config.num_steps)):
-                print(np.all(sim_state == sim_state))
                 sim_state = sim_step(sim_state)
                 simulation_history[t] = sim_state
+                #print(np.all(sim_state == sim_state))
             return simulation_history
 
 
 def run_simulation_main(config: EasyDict):
+    # I am actually too lazy to write out 8x8 matrices of potential paramters
+    # so I do this instead
+    #config.potential_far = np.array(config.potential_far)
+    #config.potential_far = \
+    #    np.concatenate([np.concatenate([config.potential_far, 2*config.potential_far], axis=-1),
+    #                    np.concatenate([2*config.potential_far.T, config.potential_far], axis=-1)], axis=0)
+    #config.potential_trough = np.array(config.potential_trough)
+    #config.potential_trough = \
+    #    np.concatenate([np.concatenate([config.potential_trough, 2*config.potential_trough], axis=-1),
+    #                    np.concatenate([2*config.potential_trough.T, config.potential_trough], axis=-1)], axis=0)
+    #config.potential_peak = np.array(config.potential_peak)
+    #config.potential_peak = \
+    #    np.concatenate([np.concatenate([config.potential_peak, config.potential_peak], axis=-1),
+    #                    np.concatenate([config.potential_peak.T, config.potential_peak], axis=-1)], axis=0)
+    #config.potential_close = np.array(config.potential_close)
+    #config.potential_close = \
+    #    np.concatenate([np.concatenate([0.25*config.potential_far[:4, :4], config.potential_close], axis=-1),
+    #                    np.concatenate([config.potential_close.T, 0.25*config.potential_far[4:, 4:]], axis=-1)], axis=0)
+    #config.potential_close = 0.5*config.potential_far
+
     if not os.path.exists(config.results_dir):
         os.makedirs(config.results_dir)
         with open(os.path.join(config.results_dir, 'config.yaml'), 'w') as f:

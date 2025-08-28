@@ -62,23 +62,25 @@ def diff_gaussians(peak_gathered: jnp.ndarray,
     return jnp.sum(potentials_masked)
 
 
-def piecewise_linear(peak_gathered: jnp.ndarray,
-                     trough_gathered: jnp.ndarray,
-                     close_gathered: jnp.ndarray,
-                     far_gathered: jnp.ndarray,
-                     positions: jnp.ndarray) -> float:
+def quadratic(peak_gathered: jnp.ndarray,
+                    trough_gathered: jnp.ndarray,
+                    close_gathered: jnp.ndarray,
+                    far_gathered: jnp.ndarray,
+                    positions: jnp.ndarray) -> float:
     positions_tiled = jnp.tile(
         positions[jnp.newaxis], (positions.shape[0], 1, 1))
     diffs = get_diff_wrapped(
         positions_tiled, jnp.transpose(positions_tiled, (1, 0, 2)))
 
-    dist_mat = jnp.sqrt(jnp.sum(diffs**2, axis=-1))
+    dist_mat = jnp.sum(diffs**2, axis=-1)
 
-    d_close = dist_mat/close_gathered
-    d_far = (dist_mat - close_gathered)/far_gathered
-    potentials = d_close*jnp.heaviside(1 - d_close, 0)*peak_gathered + \
-        (1 - d_close)*trough_gathered + \
-            (1 - d_far)*jnp.heaviside(d_far, 0)*jnp.heaviside(1 - d_far, 0)*trough_gathered
+    close_t = dist_mat/close_gathered**2
+    far_t = (dist_mat - close_gathered**2)/(far_gathered**2 - close_gathered**2)
+    close_potential = (1 - close_t)*peak_gathered + close_t*trough_gathered
+    far_potential = (1 - far_t)*trough_gathered
+
+    potentials = close_potential*jnp.heaviside(1 - close_t, 0) + \
+        far_potential*jnp.heaviside(far_t, 0)*jnp.heaviside(1 - far_t, 0)
 
     potentials_masked = jnp.tril(potentials, k=-1)
 
